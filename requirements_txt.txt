@@ -1,0 +1,5 @@
+sentence-transformers>=2.7.0  # Modern version, highly compatible
+faiss-cpu>=1.7.4             # Use a non-strict version, or 1.25.0+ if available
+PyPDF2>=3.0.1
+numpy>=1.26.0                # Crucial: 1.26.x or 2.x required for Python 3.12+
+torch>=2.2.0                 # Modern torch version compatible with recent Python/numpy

@@ -1,0 +1,266 @@
+================================================================================
+FYP HANDBOOK RAG SYSTEM - PROMPT LOG
+================================================================================
+FYP Handbook RAG pipeline.
+
+================================================================================
+1. SYSTEM PROMPT TEMPLATE (app.py)
+================================================================================
+
+You are a helpful FYP Handbook assistant for FAST-NUCES students. 
+
+IMPORTANT RULES:
+1. Answer ONLY using information from the provided context chunks
+2. ALWAYS cite page numbers using the format (p. X) after claims
+3. If the context doesn't contain the answer, say "I don't have that information in the handbook"
+4. Do NOT make up information or use external knowledge
+5. Be concise but complete in your answers
+6. Quote key phrases when helpful, but also paraphrase to explain clearly
+
+Question: {question}
+
+Context from FYP Handbook:
+{context}
+
+Answer (with page citations):
+
+================================================================================
+EXPLANATION:
+- This is the main prompt template used for generating answers
+- Variables {question} and {context} are filled dynamically
+- Emphasizes grounding (only use context), citation (page numbers), and accuracy
+- Instructs the model to be helpful but honest about limitations
+
+================================================================================
+2. CONTEXT FORMATTING TEMPLATE
+================================================================================
+
+[Chunk {chunk_number} - Page {page_number}]
+{chunk_text}
+
+================================================================================
+EXPLANATION:
+- Each retrieved chunk is formatted with this template
+- Provides clear page attribution for each piece of context
+- Multiple chunks are concatenated with newlines between them
+- Example:
+  [Chunk 1 - Page 5]
+  The FYP report must use Times New Roman 11pt for body text...
+  
+  [Chunk 2 - Page 6]
+  Margins should be set to: Top 1.5", Bottom 1.0", Left 2.0", Right 1.0"...
+
+================================================================================
+3. REJECTION PROMPT (Low Similarity)
+================================================================================
+
+⚠️ I don't have that information in the handbook. The retrieved content has low 
+similarity to your question.
+
+Try rephrasing your question or asking about topics covered in the FYP handbook.
+
+================================================================================
+EXPLANATION:
+- Triggered when max similarity score < SIMILARITY_THRESHOLD (default: 0.25)
+- Prevents hallucination by refusing to answer when relevance is low
+- Provides constructive feedback to help user rephrase
+
+================================================================================
+4. QUERY PREPROCESSING
+================================================================================
+
+No preprocessing is applied to user queries. Queries are embedded directly
+using the Sentence-BERT model (all-MiniLM-L6-v2).
+
+Rationale:
+- Preserves user's natural language and intent
+- Model is trained to handle various phrasings
+- Simple approach reduces complexity and potential errors
+
+================================================================================
+5. EMBEDDING PROCESS
+================================================================================
+
+Steps for Query Embedding:
+1. User query → String input
+2. SentenceTransformer.encode(query) → 384-dimensional vector
+3. faiss.normalize_L2(embedding) → Normalized for cosine similarity
+4. FAISS search → Retrieve top-k most similar chunks
+
+Similarity Calculation:
+- FAISS uses L2 distance after normalization
+- Conversion to cosine similarity: similarity = 1 - (L2_distance² / 2)
+- Range: 0.0 (no similarity) to 1.0 (identical)
+
+================================================================================
+6. EXAMPLE INFERENCE FLOW
+================================================================================
+
+User Query: "What are the formatting requirements for the FYP report?"
+
+Step 1: Encode Query
+→ [0.123, -0.456, 0.789, ...] (384 dimensions)
+
+Step 2: FAISS Search (top-5)
+→ Retrieved Chunks:
+   - Chunk ID: p5_c2, Page: 5, Similarity: 0.78
+   - Chunk ID: p6_c1, Page: 6, Similarity: 0.72
+   - Chunk ID: p7_c3, Page: 7, Similarity: 0.65
+   - Chunk ID: p8_c1, Page: 8, Similarity: 0.58
+   - Chunk ID: p9_c2, Page: 9, Similarity: 0.51
+
+Step 3: Check Threshold
+→ Max similarity (0.78) > Threshold (0.25) ✓
+
+Step 4: Format Context
+[Chunk 1 - Page 5]
+The FYP report formatting requires Times New Roman 11pt font for body text...
+
+[Chunk 2 - Page 6]
+Headings should use Arial font with specific sizes: Title 20pt, H1 16pt...
+
+[Chunk 3 - Page 7]
+Margins must be configured as follows: Top 1.5 inches, Bottom 1.0 inches...
+
+[Chunk 4 - Page 8]
+Line spacing should be set to 1.5 throughout the document...
+
+[Chunk 5 - Page 9]
+Paragraph spacing should include 6pt space after each paragraph...
+
+Step 5: Generate Prompt
+You are a helpful FYP Handbook assistant for FAST-NUCES students. 
+
+IMPORTANT RULES:
+1. Answer ONLY using information from the provided context chunks
+2. ALWAYS cite page numbers using the format (p. X) after claims
+...
+
+Question: What are the formatting requirements for the FYP report?
+
+Context from FYP Handbook:
+[Chunk 1 - Page 5]
+The FYP report formatting requires Times New Roman 11pt font for body text...
+...
+
+Answer (with page citations):
+
+Step 6: Send to LLM (or display for manual use)
+
+================================================================================
+7. CONFIGURATION PARAMETERS
+================================================================================
+
+Chunking Configuration:
+- CHUNK_SIZE: 300 words
+- OVERLAP: 30% (90 words overlap between chunks)
+- MIN_CHUNK_SIZE: 50 words (chunks smaller than this are skipped)
+
+Retrieval Configuration:
+- MODEL_NAME: 'all-MiniLM-L6-v2'
+- EMBEDDING_DIMENSION: 384
+- TOP_K: 5 (number of chunks to retrieve)
+- SIMILARITY_THRESHOLD: 0.25 (minimum similarity for valid results)
+
+Search Configuration:
+- SIMILARITY_METRIC: Cosine similarity (via normalized L2)
+- INDEX_TYPE: FAISS Flat L2 (exhaustive search, exact results)
+
+================================================================================
+8. PROMPT DESIGN RATIONALE
+================================================================================
+
+Key Design Decisions:
+
+1. **Strict Grounding**: "Answer ONLY using information from the provided context"
+   - Prevents hallucination and ensures factual accuracy
+   - Critical for educational/reference applications
+
+2. **Mandatory Citations**: "ALWAYS cite page numbers using the format (p. X)"
+   - Enables verification against source document
+   - Builds trust and transparency
+   - Helps students locate information in original handbook
+
+3. **Honesty About Limitations**: "If the context doesn't contain the answer..."
+   - Better to admit ignorance than provide incorrect information
+   - Guides users to rephrase or ask different questions
+
+4. **Balanced Detail**: "Be concise but complete in your answers"
+   - Respects user's time while ensuring comprehension
+   - Particularly important for quick reference queries
+
+5. **Helpful Formatting**: Using quotes and paraphrasing
+   - Quotes preserve exact requirements (e.g., "Times New Roman 11pt")
+   - Paraphrasing explains complex concepts clearly
+   - Combination provides both precision and understanding
+
+================================================================================
+9. VALIDATION QUERIES (Test Cases)
+================================================================================
+
+Query 1: "What headings, fonts, and sizes are required in the FYP report?"
+Expected: Times New Roman 11pt body, Arial headings, specific sizes for Title/H1/H2/H3
+Pages: Formatting section (typically p.5-7)
+
+Query 2: "What margins and spacing do we use?"
+Expected: Top 1.5", Bottom 1.0", Left 2.0", Right 1.0"; 1.5 line spacing; 6pt paragraph
+Pages: Formatting section (typically p.5-7)
+
+Query 3: "What are the required chapters/sections of a Development FYP report?"
+Expected: Intro, research on existing products, vision, SRS, iterations, implementation, 
+         user manual, references, appendices
+Pages: Development FYP Report Format section
+
+Query 4: "What are the required chapters of an R&D-based FYP report?"
+Expected: Intro, literature review, proposed approach, implementation, validation & testing,
+         results & discussion, conclusions & future work, references, appendices
+Pages: R&D FYP Report Format section
+
+Query 5: "How should endnotes like 'Ibid.' and 'op. cit.' be used?"
+Expected: Ibid. for repeated immediate citation (with page if different), 
+         op. cit. for source reappearing after interruptions
+Pages: Footnotes/endnotes section
+
+Query 6: "What goes into the Executive Summary and Abstract?"
+Expected: Abstract 50-125 words on separate page; Executive summary 1-2 pages overview
+         for presentations
+Pages: Report preliminaries section
+
+================================================================================
+10. ERROR HANDLING PROMPTS
+================================================================================
+
+Case 1: Empty Query
+→ No prompt generated, UI shows: "Please enter a question"
+
+Case 2: No Relevant Results (similarity < threshold)
+→ "⚠️ I don't have that information in the handbook. The retrieved content has 
+    low similarity to your question."
+
+Case 3: Index Not Found
+→ "❌ Index not found! Please run `ingest.py` first to process the handbook."
+
+Case 4: Out-of-Scope Query (e.g., "What's the weather?")
+→ Context will have low similarity → triggers Case 2 response
+
+================================================================================
+11. FUTURE ENHANCEMENTS
+================================================================================
+
+Potential Prompt Improvements:
+1. Add few-shot examples in prompt for better formatting consistency
+2. Include explicit instructions for handling tables/lists in source material
+3. Add meta-reasoning: "First, identify relevant sections, then synthesize answer"
+4. Implement query expansion: generate related questions to improve recall
+5. Add confidence scoring: "I'm highly/moderately/somewhat confident..."
+
+Potential System Improvements:
+1. Hybrid search: Combine dense (semantic) + sparse (keyword) retrieval
+2. Re-ranking: Use cross-encoder to re-score retrieved chunks
+3. Query classification: Route to different prompts based on question type
+4. Conversation memory: Track multi-turn interactions for follow-up questions
+5. Active learning: Learn from user feedback on answer quality
+
+================================================================================
+END OF PROMPT LOG
+================================================================================
